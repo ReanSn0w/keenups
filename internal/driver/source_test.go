@@ -31,6 +31,9 @@ func TestSourceConsumesDriverDump(t *testing.T) {
 	}
 	defer listener.Close()
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	serverDone := make(chan error, 1)
 	go func() {
 		conn, err := listener.Accept()
@@ -48,13 +51,18 @@ func TestSourceConsumesDriverDump(t *testing.T) {
 			serverDone <- &unexpectedLine{line}
 			return
 		}
-		_, err = io.WriteString(conn, "SETINFO ups.status \"OL\"\nSETINFO battery.charge \"100\"\nDATAOK\nDUMPDONE\n")
-		serverDone <- err
+		if _, err = io.WriteString(conn, "SETINFO ups.status \"OL\"\nSETINFO battery.charge \"100\"\nDATAOK\nDUMPDONE\n"); err != nil {
+			serverDone <- err
+			return
+		}
+
+		// Keep the socket open until the assertions finish. If it is closed here,
+		// Source.Run immediately reconnects and Connected clears the previous dump.
+		<-ctx.Done()
+		serverDone <- nil
 	}()
 
 	store := state.New(0)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 	source := Source{
 		SocketPath: path,
 		RetryDelay: 10 * time.Millisecond,
@@ -64,16 +72,19 @@ func TestSourceConsumesDriverDump(t *testing.T) {
 	go source.Run(ctx)
 
 	deadline := time.Now().Add(time.Second)
+	var snap state.Snapshot
 	for time.Now().Before(deadline) {
-		snap := store.Snapshot()
-		if snap.DataOK && snap.Variables["ups.status"] == "OL" {
+		snap = store.Snapshot()
+		if snap.DataOK && snap.Variables["ups.status"] == "OL" && snap.Variables["battery.charge"] == "100" {
 			break
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
-	if got := store.Snapshot().Variables["battery.charge"]; got != "100" {
-		t.Fatalf("battery.charge = %q", got)
+	if !snap.DataOK || snap.Variables["ups.status"] != "OL" || snap.Variables["battery.charge"] != "100" {
+		t.Fatalf("incomplete driver dump: %+v", snap)
 	}
+
+	cancel()
 	if err := <-serverDone; err != nil {
 		t.Fatal(err)
 	}
