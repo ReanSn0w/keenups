@@ -1,0 +1,17 @@
+#!/bin/sh
+
+ENABLED=yes
+PROCS=keenups
+ARGS=""
+PREARGS=""
+DESC="$PROCS"
+PATH=/opt/sbin:/opt/bin:/sbin:/bin:/usr/sbin:/usr/bin
+
+export KEENUPS_LISTEN=:3493
+export KEENUPS_HTTP_LISTEN=:8080
+export KEENUPS_DRIVER_BIN=/opt/lib/nut/usbhid-ups
+export KEENUPS_DRIVER_SOCKET=/opt/var/run/usbhid-ups-keenups
+export KEENUPS_USERNAME=monuser
+export KEENUPS_PASSWORD=secret
+
+. /opt/etc/init.d/rc.func

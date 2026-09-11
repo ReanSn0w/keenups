@@ -1,0 +1,9 @@
+[keenups]
+    driver = usbhid-ups
+    port = auto
+    vendorid = 0d9f
+    productid = 0004
+    pollonly
+    pollinterval = 2
+    pollfreq = 5
+    desc = "Powercom WOW-500U"
